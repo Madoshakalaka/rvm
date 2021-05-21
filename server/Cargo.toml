@@ -10,4 +10,6 @@ edition = "2018"
 
 
 [dependencies]
-tokio = { version = "1.5.0", features = ["full"] }
+shared = {path = "../shared"}
+tokio-util = {version = "0.6", features = ["codec"]}
+tokio-stream = {version = "0.1"}

@@ -1,6 +1,17 @@
-use tokio::net::TcpListener;
+use std::str::FromStr;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use std::io::ErrorKind;
+use tokio::net::TcpListener;
+use tokio_stream::{Stream, StreamExt};
+use tokio_util::codec::{AnyDelimiterCodec, FramedRead, LinesCodec};
+
+use shared::deps::tokio as tokio;
+use shared::message::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, MESSAGE_DELIMITER};
+
+use crate::custom_errors::Error;
+
+mod custom_errors;
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -8,34 +19,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         println!("Waiting for new connection...");
-        let (mut socket, a) = listener.accept().await?;
-        println!("Accepted connection: {}", a);
+        let (mut socket, address) = listener.accept().await?;
+        println!("Accepted connection from {}", address);
         tokio::spawn(async move {
-            let mut buf = [0; 1024];
 
-            // In a loop, read data from the socket and write the data back.
-            loop {
-                let n = match socket.read(&mut buf).await {
-                    // socket closed
-                    Ok(n) if n == 0 => {
-                        println!("Client {} leaves", a);
-                        return
-                    },
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
-                        return;
+            let mut framed = shared::message::default_framed(socket);
 
-                    }
-                };
-                println!("{} received", n);
 
-                // Write the data back
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
-                }
+            while let Some(received_bytes) = framed.next().await{
+                let received_bytes = received_bytes?;
+                let received_string = String::from_utf8(Vec::from(&received_bytes[..]))?;
+                println!("{}", received_string);
+                if received_string == CLIENT_QUIT_MESSAGE.to_string() {break}
             }
+
+            println!("Client {} leaves", address);
+
+
+        Ok::<(), Error>(())
         });
     }
 }

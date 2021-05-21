@@ -1,6 +1,3 @@
-mod lib;
-
-
 use std::{fmt, io};
 use std::error::Error;
 
@@ -16,6 +13,6 @@ use shared::deps::tokio as tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    lib::run(Handle::current()).await?;
+    client::run().await?;
     Ok(())
 }
