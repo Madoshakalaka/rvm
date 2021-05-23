@@ -1,39 +1,39 @@
-use std::str::FromStr;
+use std::collections::VecDeque;
 
-use async_stream::stream;
+
+use std::ops::Sub;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use bytes::Bytes;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use future::sink::SinkExt;
-use futures_util::pin_mut;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-use tokio::runtime::Handle;
-use tokio::task::JoinError;
-use tokio::time::Duration;
 
-use shared::deps::async_stream as async_stream;
-use shared::deps::futures as future;
-use shared::deps::futures_util as futures_util;
-use shared::deps::tokio as tokio;
-use shared::deps::tokio::sync::broadcast::error::{SendError, RecvError, TryRecvError};
-use shared::deps::tokio::task::spawn_blocking;
-use shared::deps::tokio_util as tokio_util;
-use shared::deps::tokio_util::codec::{AnyDelimiterCodec, Framed};
-use shared::message::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, MESSAGE_DELIMITER};
+use tokio::net::TcpStream;
+use tokio::time::Duration;
+use tui::backend::CrosstermBackend;
+use tui::layout::{Constraint, Direction, Layout};
+use tui::Terminal;
+use tui::widgets::{Block, Borders, Paragraph};
+
+use error::{Error, Result};
+use shared::dep::bytes as bytes;
+use shared::dep::futures as future;
+use shared::dep::futures::StreamExt;
+
+
+use shared::dep::serde_cbor;
+use shared::dep::tokio as tokio;
+use shared::dep::tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use shared::dep::tokio::sync::broadcast::{Receiver, Sender};
+use shared::dep::tokio::sync::broadcast::error::TryRecvError;
+use shared::dep::tokio::sync::Mutex;
+use shared::dep::tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use shared::message::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, ServerToClientMessage};
 
 pub mod save;
-pub mod custom_error;
+pub mod error;
 
-
-use custom_error::{Result, Error};
-use tui::backend::CrosstermBackend;
-use tui::Terminal;
-use std::io::Stdout;
-use shared::deps::tokio::sync::broadcast::{Receiver, Sender};
-use shared::message::ClientToServerMessage::IWantToDisconnect;
-use tui::layout::{Layout, Direction, Constraint};
-use tui::widgets::{Block, Borders, Paragraph};
-use tui::text::Span;
-use std::collections::VecDeque;
 
 #[cfg(test)]
 mod tests {
@@ -51,16 +51,16 @@ mod tests {
 
 
 fn forever_listen_for_controls(control_sx: Sender<ClientToServerMessage>) -> Result<()> {
-    while let event = crossterm::event::read()? {
+    loop {
+        let event = crossterm::event::read()?;
         if let Some(m) = from(event) {
             if m == CLIENT_QUIT_MESSAGE {
                 break;
             }
 
-            control_sx.send(m);
+            control_sx.send(m)?;
         };
-    };
-
+    }
     Ok(())
 }
 
@@ -69,53 +69,62 @@ pub async fn run() -> Result<()> {
     let (message_tx_from_events, client_message_rx) = tokio::sync::broadcast::channel::<ClientToServerMessage>(16);
     let mut drawer_dispatching_message_rx = message_tx_from_events.subscribe();
 
-    let (debug_message_tx, mut debug_message_rx) = std::sync::mpsc::channel::<String>()  ;
+    let (debug_message_tx, mut debug_message_rx) = tokio::sync::mpsc::channel::<String>(16);
 
+    let (pong_tx, pong_rx) = tokio::sync::mpsc::channel::<SystemTime>(16);
 
-    let mut stdout = std::io::stdout();
+    let stdout = std::io::stdout();
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).map_err(|e| Error::TerminalInitialization(e))?;
 
-    terminal.clear();
+    terminal.clear().map_err(|e| Error::ClearTerminal(e))?;
+
+    let message_buffer: Arc<std::sync::Mutex<VecDeque<String>>> = Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(30)));
+
+    let receiving_message_buffer = Arc::clone(&message_buffer);
+    let recv_debug = tokio::task::spawn(async move {
+        loop {
+            match debug_message_rx.recv().await {
+                None => { break; }
+                Some(m) => {
+                    receiving_message_buffer.lock().unwrap().push_front(m);
+                }
+            };
+        }
+        ()
+    });
+
 
     let draw = tokio::task::spawn_blocking(move || {
-        let mut message_buffer:VecDeque<String> = VecDeque::with_capacity(30);
         loop {
+            let debug_display: Paragraph;
 
+            let mut x = message_buffer.lock().unwrap();
 
-            let mut debug_display: Paragraph;
-
-
-            match drawer_dispatching_message_rx.try_recv(){
-                Ok(message) => message_buffer.push_front(message.to_string()),
-                Err(TryRecvError::Empty)=> {},
-                Err(TryRecvError::Closed)=> {
-                    terminal.clear();
-                    return Ok::<(), Error>(())},
-                Err(TryRecvError::Lagged(_)) => message_buffer.push_front(String::from("Draw thread message receiver lagged"))
-            };
-
-            match debug_message_rx.try_recv(){
-                Ok(message) => message_buffer.push_front(message.to_string()),
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    terminal.clear();
-                    return Ok::<(), Error>(())
+            match drawer_dispatching_message_rx.try_recv() {
+                Ok(message) => x.push_front(message.to_string()),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Closed) => {
+                    break;
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(TryRecvError::Lagged(_)) => x.push_front(String::from("Draw thread message receiver lagged"))
             };
 
-
-
-            debug_display = match message_buffer.len() {
-                0 =>    Paragraph::new("").block(Block::default()
-                    .borders(Borders::ALL)),
-                1 =>    Paragraph::new(message_buffer[0].clone()).block(Block::default()
-                    .borders(Borders::ALL)),
+            debug_display = match x.len() {
+                0 => {
+                    Paragraph::new("").block(Block::default()
+                        .borders(Borders::ALL))
+                }
+                1 => {
+                    Paragraph::new(x[0].clone()).block(Block::default()
+                        .borders(Borders::ALL))
+                }
                 _ => {
-                    message_buffer.truncate(1);
-                    Paragraph::new(message_buffer[0].clone()).block(Block::default()
-                    .borders(Borders::ALL))}
+                    x.truncate(1);
+                    Paragraph::new(x[0].clone()).block(Block::default()
+                        .borders(Borders::ALL))
+                }
             };
 
 
@@ -144,28 +153,57 @@ pub async fn run() -> Result<()> {
             ).map_err(|err| Error::DrawFrame(err))?;
         }
 
-
+        terminal.clear().map_err(|e| Error::ClearTerminal(e))?;
+        error::ok()
     });
 
 
-    let mut client: Client = Client::new(client_message_rx, debug_message_tx).await?;
+    let stream = TcpStream::connect("127.0.0.1:8080").await
+        .map_err(|e| Error::Connection(e))?;
+    let (read_half, write_half) = stream.into_split();
 
-    let send_to_server_handle = tokio::spawn(async move {
-        client.forever_send_controls_to_server().await;
-        client.disconnect().await;
-        ()
+    let framed_write =
+        Arc::new(Mutex::new(
+            FramedWrite::new(write_half, LengthDelimitedCodec::new())
+        ));
+    let framed_write1 = Arc::clone(&framed_write);
+
+    let framed_read =
+        FramedRead::new(read_half, LengthDelimitedCodec::new());
+
+    debug_message_tx.send("Connected to server".parse().unwrap()).await?;
+
+    let mut control_sender = ControlSender::new(framed_write, client_message_rx);
+    let mut ping_calculator = PingCalculator::new(framed_write1, pong_rx, debug_message_tx);
+    let mut server_reader = ServerReader::new(framed_read, pong_tx);
+
+    let interact_with_server = tokio::spawn(async move {
+        let (send_controls, calculate_ping, receive) = tokio::join!(
+            control_sender.forever_send_controls_to_server(),
+            ping_calculator.calculate_ping_periodically(),
+            server_reader.receive_from_server_until_closed()
+        );
+
+        send_controls?;
+        calculate_ping?;
+        receive?;
+        error::ok()
     });
 
     let listen_for_controls_handle =
         tokio::task::spawn_blocking(move || forever_listen_for_controls(message_tx_from_events));
 
 
-    let (first, second, draw_join) = tokio::join!(send_to_server_handle, listen_for_controls_handle, draw);
+    let (interact, second, draw_join, recv_debug_handle) = tokio::join!(interact_with_server, listen_for_controls_handle, draw, recv_debug);
 
 
-
-    if let Some(join_error) = first.err() {
-        return Err(Error::MessageSendingTaskIncomplete(join_error.into()));
+    match interact {
+        Ok(task) => {
+            task?;
+        }
+        Err(join_error) => {
+            return Err(Error::ClientInteractionTaskIncomplete(join_error.into()));
+        }
     }
 
 
@@ -174,72 +212,114 @@ pub async fn run() -> Result<()> {
         Err(join_error) => return Err(Error::EventListeningTaskIncomplete(join_error.into()))
     }
 
-    match draw_join{
+    match draw_join {
         Ok(draw) => {
             draw?
-        },
-        Err(join_error) =>{
-            return Err(Error::DrawTaskIncomplete(join_error.into()));
         }
+        Err(join_error) => {
+            Err(Error::DrawTaskIncomplete(join_error.into()))?;
+        }
+    };
+
+    if let Err(e) = recv_debug_handle {
+        Err(Error::ReceiveDebugTaskIncomplete(e.into()))?;
     }
 
     Ok(())
 }
 
-struct Client {
+// todo: move ping display to the top
+// todo: investigate which task hangs after Esc is pressed
+
+struct PingCalculator {
+    framed_write: Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
+    pong_rx: tokio::sync::mpsc::Receiver<SystemTime>,
+    debug_message_tx: tokio::sync::mpsc::Sender<String>,
+}
+
+impl PingCalculator {
+    fn new(framed_write: Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
+           pong_rx: tokio::sync::mpsc::Receiver<SystemTime>,
+           debug_message_tx: tokio::sync::mpsc::Sender<String>) -> Self {
+        Self { framed_write, pong_rx, debug_message_tx }
+    }
+
+    async fn calculate_ping_periodically(&mut self) -> Result<()> {
+        loop {
+            send_message(&self.framed_write, ClientToServerMessage::Ping(SystemTime::now())).await?;
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if let Some(time) = self.pong_rx.recv().await {
+                self.debug_message_tx.send(
+                    format!(
+                        "ping: {}",
+                        SystemTime::now().sub(Duration::from_secs(1)).duration_since(time).unwrap().as_millis()
+                    )
+                ).await?;
+            } else {
+                break;
+            }
+        }
+        error::ok()
+    }
+}
+
+
+struct ControlSender {
+    framed_write: Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
     control_rx: Receiver<ClientToServerMessage>,
-    debug_message_tx: std::sync::mpsc::Sender<String>,
-    framed: Framed<TcpStream, AnyDelimiterCodec>,
 }
 
-
-enum DebugMessage{
-    ClientToServer(ClientToServerMessage),
-    Client(String)
-}
-
-impl Client {
-
-    /// show debug output on screen
-    fn debug(&mut self, message: String){
-        self.debug_message_tx.send(message);
+impl ControlSender {
+    fn new(framed_write: Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
+           control_rx: Receiver<ClientToServerMessage>) -> Self {
+        Self { framed_write, control_rx }
     }
 
-
-    /// Tries to connect to the server
-    async fn new(control_rx: Receiver<ClientToServerMessage>, mut debug_message_tx: std::sync::mpsc::Sender<String>) -> Result<Client> {
-        let stream = TcpStream::connect("127.0.0.1:8080").await
-            .map_err(|e| Error::Connection(e))?;
-
-        debug_message_tx.send(String::from("Connected to server"));
-
-        Ok(Self { control_rx,debug_message_tx, framed: shared::message::default_framed(stream) })
-    }
-
-    async fn forever_send_controls_to_server(&mut self) {
+    async fn forever_send_controls_to_server(&mut self) -> Result<()> {
 
         // Error<RecvError::Closed> is normal ending
         while let Ok(m) = self.control_rx.recv().await {
-            self.send_message(m)
-                .await;
+            send_message(&self.framed_write, m)
+                .await?;
         }
-        ()
+        error::ok()
+    }
+}
+
+
+async fn send_message(framed_write: &Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
+                      message: ClientToServerMessage) -> Result<()> {
+    framed_write.lock().await
+        .send(Bytes::from(serde_cbor::to_vec(&message).unwrap())).await
+        .map_err(|e| Error::SendMessage(e))?;
+    error::ok()
+}
+
+struct ServerReader {
+    framed_read: FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
+    pong_tx: tokio::sync::mpsc::Sender<SystemTime>,
+}
+
+impl ServerReader {
+    fn new(framed_read: FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
+           pong_tx: tokio::sync::mpsc::Sender<SystemTime>) -> Self {
+        Self { framed_read, pong_tx }
     }
 
-    async fn disconnect(mut self) {
-        let message = CLIENT_QUIT_MESSAGE;
-        self.debug(format!("Sending {} to server", message.to_string()));
-
-        self.send_message(message).await;
-        self.framed.get_mut().shutdown().await;
-
-        // otherwise the stream shutdown too quickly and the server side gets errors - which
-        // actually doesn't matter at all except will make the log output ugly.
-        tokio::time::sleep(Duration::from_micros(500)).await;
-    }
-
-    async fn send_message(&mut self, message: ClientToServerMessage) {
-        self.framed.send(message.to_string()).await;
+    async fn receive_from_server_until_closed(&mut self) -> std::result::Result<(), Error> {
+        while let Some(received_bytes) = self.framed_read.next().await {
+            let received_bytes = received_bytes.map_err(|e| Error::DecodeFromServer(e))?;
+            let received = serde_cbor::from_slice::<ServerToClientMessage>(&*received_bytes)?;
+            match received {
+                ServerToClientMessage::Pong(time) => {
+                    if let Err(_) = self.pong_tx.send(time).await {
+                        break;
+                    }
+                }
+            }
+        }
+        error::ok()
     }
 }
 
