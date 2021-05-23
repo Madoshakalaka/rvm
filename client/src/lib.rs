@@ -198,7 +198,7 @@ pub async fn run() -> Result<()> {
             b?;
             c?;
         }
-        Err(e) => Err(Error::MainTaskJoin(join_error.into()))?
+        Err(e) => Err(Error::MainTaskJoin(e.into()))?
     }
 
 
