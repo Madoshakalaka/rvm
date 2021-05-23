@@ -5,3 +5,6 @@ pub use futures;
 pub use async_stream;
 pub use futures_util;
 pub use thiserror;
+pub use serde::{Serialize, Deserialize};
+pub use serde_cbor;
+pub use bytes;
