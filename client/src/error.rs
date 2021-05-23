@@ -38,14 +38,8 @@ pub enum Error {
     DebugSend(#[from] tokio::sync::mpsc::error::SendError<String>),
     #[error("Failed to clear the terminal")]
     ClearTerminal(#[source] std::io::Error),
-    #[error("Control event listening task failed to complete")]
-    EventListeningTaskIncomplete(#[source] JoinError),
-    #[error("Client interaction task failed to complete")]
-    ClientInteractionTaskIncomplete(#[source] JoinError),
-    #[error("Drawing sending task failed to complete")]
-    DrawTaskIncomplete(#[source] JoinError),
-    #[error("Debug reception task failed to complete")]
-    ReceiveDebugTaskIncomplete(#[source] JoinError),
+    #[error("Main task failed to join")]
+    MainTaskJoin(#[from] JoinError),
     #[error("Failed to decode server message as cbor")]
     ServerMessageDecode(#[from] serde_cbor::Error),
 }

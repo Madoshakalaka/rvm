@@ -30,6 +30,7 @@ use shared::dep::tokio::sync::broadcast::error::TryRecvError;
 use shared::dep::tokio::sync::Mutex;
 use shared::dep::tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use shared::message::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, ServerToClientMessage};
+use shared::dep::tokio::runtime::task::JoinError;
 
 pub mod save;
 pub mod error;
@@ -178,15 +179,12 @@ pub async fn run() -> Result<()> {
     let mut server_reader = ServerReader::new(framed_read, pong_tx);
 
     let interact_with_server = tokio::spawn(async move {
-        let (send_controls, calculate_ping, receive) = tokio::join!(
+        tokio::try_join!(
             control_sender.forever_send_controls_to_server(),
             ping_calculator.calculate_ping_periodically(),
             server_reader.receive_from_server_until_closed()
-        );
+        )?;
 
-        send_controls?;
-        calculate_ping?;
-        receive?;
         error::ok()
     });
 
@@ -194,42 +192,24 @@ pub async fn run() -> Result<()> {
         tokio::task::spawn_blocking(move || forever_listen_for_controls(message_tx_from_events));
 
 
-    let (interact, second, draw_join, recv_debug_handle) = tokio::join!(interact_with_server, listen_for_controls_handle, draw, recv_debug);
-
-
-    match interact {
-        Ok(task) => {
-            task?;
+    match tokio::try_join!(interact_with_server, listen_for_controls_handle, draw, recv_debug) {
+        Ok((a, b, c, _)) => {
+            a?;
+            b?;
+            c?;
         }
-        Err(join_error) => {
-            return Err(Error::ClientInteractionTaskIncomplete(join_error.into()));
-        }
+        Err(e) => Err(Error::MainTaskJoin(join_error.into()))?
     }
 
 
-    match second {
-        Ok(task_result) => task_result?,
-        Err(join_error) => return Err(Error::EventListeningTaskIncomplete(join_error.into()))
-    }
-
-    match draw_join {
-        Ok(draw) => {
-            draw?
-        }
-        Err(join_error) => {
-            Err(Error::DrawTaskIncomplete(join_error.into()))?;
-        }
-    };
-
-    if let Err(e) = recv_debug_handle {
-        Err(Error::ReceiveDebugTaskIncomplete(e.into()))?;
-    }
-
-    Ok(())
+    error::ok()
 }
 
 // todo: move ping display to the top
 // todo: investigate which task hangs after Esc is pressed
+// todo: log to file, maybe add run configuration to watch log file.
+//  Wilder idea: add win32 api as dev dependency, open an extra window to display logs.
+
 
 struct PingCalculator {
     framed_write: Arc<Mutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
@@ -307,7 +287,7 @@ impl ServerReader {
         Self { framed_read, pong_tx }
     }
 
-    async fn receive_from_server_until_closed(&mut self) -> std::result::Result<(), Error> {
+    async fn receive_from_server_until_closed(&mut self) -> Result<()> {
         while let Some(received_bytes) = self.framed_read.next().await {
             let received_bytes = received_bytes.map_err(|e| Error::DecodeFromServer(e))?;
             let received = serde_cbor::from_slice::<ServerToClientMessage>(&*received_bytes)?;
