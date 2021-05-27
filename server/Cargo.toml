@@ -6,10 +6,8 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-
-
-
 [dependencies]
-shared = {path = "../shared"}
-tokio-util = {version = "0.6", features = ["codec"]}
-tokio-stream = {version = "0.1"}
+shared = { path = "../shared" }
+tokio-util = { version = "0.6", features = ["codec"] }
+tokio-stream = { version = "0.1" }
+
