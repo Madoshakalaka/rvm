@@ -42,6 +42,17 @@ pub enum Error {
     MainTaskJoin(#[from] JoinError),
     #[error("Failed to decode server message as cbor")]
     ServerMessageDecode(#[from] serde_cbor::Error),
+    #[error("Holy Spirit failed to format timestamp inside event")]
+    FormatTimestamp(#[source] std::fmt::Error),
+    #[error("Holy Spirit failed to format thread name")]
+    FormatThreadName(#[source] std::fmt::Error),
+    #[error("Holy Spirit failed to format full context")]
+    FormatFullContext(#[source] std::fmt::Error),
+    #[error("Holy Spirit failed to format target")]
+    FormatTarget(#[source] std::fmt::Error),
+    #[error("Holy Spirit failed to format fields")]
+    FormatFields(#[source] std::fmt::Error),
+
 }
 
 pub fn ok()->Result<()>{
