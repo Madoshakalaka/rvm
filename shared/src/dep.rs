@@ -2,7 +2,6 @@
 pub use tokio_util;
 pub use tokio;
 pub use futures;
-pub use async_stream;
 pub use futures_util;
 pub use thiserror;
 pub use serde::{Serialize, Deserialize};
