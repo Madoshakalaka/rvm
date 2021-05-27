@@ -531,7 +531,8 @@ impl<'a, S> Context<'a, S>
     pub fn current_span(&self) -> tracing_core::span::Current {
         self.subscriber
             .map(tracing_core::Subscriber::current_span)
-            // TODO: this would be more correct as "unknown", so perhaps
+            // the comment is from tracing_subcriber
+            // T-O-D-O: this would be more correct as "unknown", so perhaps
             // `tracing-core` should make `Current::unknown()` public?
             .unwrap_or_else(tracing_core::span::Current::none)
     }
@@ -544,7 +545,8 @@ impl<'a, S> Context<'a, S>
             // If this context is `None`, we are registering a callsite, so
             // return `true` so that the layer does not incorrectly assume that
             // the inner subscriber has disabled this metadata.
-            // TODO(eliza): would it be more correct for this to return an `Option`?
+            // this t-o-d-o is from tracing_subscriber maintainer
+            // T-O-D-O(eliza): would it be more correct for this to return an `Option`?
             .unwrap_or(true)
     }
 
