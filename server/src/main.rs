@@ -36,6 +36,7 @@ async fn run() -> Result<()> {
                 println!("{:?}", received);
                 match received {
                     CLIENT_QUIT_MESSAGE => {
+                        framed.send(Bytes::from(serde_cbor::to_vec(&ServerToClientMessage::DisconnectAcknowledged).unwrap())).await.unwrap();
                         break;
                     }
                     ClientToServerMessage::W => {}
@@ -46,7 +47,6 @@ async fn run() -> Result<()> {
                     ClientToServerMessage::Spacebar => {}
                     ClientToServerMessage::P => {}
                     ClientToServerMessage::Ping(time) => {
-                        println!("Sending Pong back to {}", address);
                         framed.send(Bytes::from(serde_cbor::to_vec(&ServerToClientMessage::Pong(time)).unwrap())).await
                             .map_err(|e| Error::SendPong(e))?
                     }
