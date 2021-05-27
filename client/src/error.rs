@@ -3,7 +3,7 @@
 
 
 use shared::dep::tokio as tokio;
-
+use tracing::error;
 
 use std::fmt::Formatter;
 use shared::dep::thiserror as thiserror;
@@ -13,7 +13,8 @@ use shared::dep::serde_cbor as serde_cbor;
 use shared::message::ClientToServerMessage;
 
 
-pub type Result<T> = std::result::Result<T, Error>;
+
+pub type Result<T=()> = std::result::Result<T, Error>;
 
 
 #[derive(Error, Debug)]
@@ -83,4 +84,39 @@ impl From<tokio::task::JoinError> for JoinError{
     fn from(wrapped: tokio::task::JoinError) -> Self {
         Self{wrapped}
     }
+}
+
+pub type SpawnedTaskResult<T=Result> = std::result::Result<T, tokio::task::JoinError>;
+
+
+
+pub(crate) fn from_spawned_task_result<T>(task_result: SpawnedTaskResult<Result<T>>) -> Result<T>{
+    match task_result {
+        Ok(r) => {
+            r
+        }
+        Err(e) => Err(Error::MainTaskJoin(e.into()))
+    }
+}
+
+
+
+fn _report_error_chain(e: impl std::error::Error, is_source:bool){
+    if let Some(source) = e.source(){
+        _report_error_chain(source, true);
+    }
+    match is_source{
+        true => {
+            error!("{}\tThis is the cause of the next error.", e);
+        }
+        false => {
+            error!("{}", e);
+        }
+    }
+
+}
+
+
+pub fn report_error_chain(e: impl std::error::Error){
+    _report_error_chain(e, false);
 }
