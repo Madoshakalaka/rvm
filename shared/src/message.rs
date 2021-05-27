@@ -1,8 +1,6 @@
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
-use strum;
-use strum::Display;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -20,11 +18,8 @@ pub const CLIENT_QUIT_MESSAGE: ClientToServerMessage = ClientToServerMessage::IW
 ///
 /// let parsed_variant: ClientToServerMessage =  serde_cbor::from_slice(& encoded_variant).unwrap();
 /// assert_eq!(parsed_variant, ClientToServerMessage::IWantToDisconnect);
-///
-/// let stringified_variant = ClientToServerMessage::IWantToDisconnect.to_string();
-/// assert_eq!(stringified_variant, "IWantToDisconnect");
 /// ```
-#[derive(Debug, Display, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum ClientToServerMessage {
     IWantToDisconnect,
     W,
@@ -41,7 +36,8 @@ pub enum ClientToServerMessage {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ServerToClientMessage {
     /// the time is the sender client's system time when it sends the ping
-    Pong(SystemTime)
+    Pong(SystemTime),
+    DisconnectAcknowledged,
 }
 
 
