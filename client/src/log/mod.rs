@@ -762,12 +762,49 @@ pub async fn start_logging(main_end_rx: tokio::sync::oneshot::Receiver<()>) {
 }
 
 #[macro_export]
-macro_rules! finally {
-    ($($first:ident)? $(::$part:ident)*! ($($args:tt)*), $fut:tt) => {
-        async { defer! {$($first)?$(::$part)*!($($args)*);} $fut.await  }
-    };
-    ($($first:ident)? $(::$part:ident)*! ($($args:tt)*), $($second:ident)? $(::$second_part:ident)* ($($fut_args:tt)*)) => {
-        async { defer! {$($first)?$(::$part)*!($($args)*);} $($second)?$(::$second_part)*($($fut_args)*).await  }
-    }
-}
+macro_rules! finally_info {
 
+    (
+        @acc[ $($acc:tt)* ]
+        $f:ident ($($args:tt)*)
+    ) => (
+        async { defer! {info!($($acc)*);} $f ($($args)*).await  }
+    );
+
+    (
+        @acc[ $($acc:tt)* ]
+        $otherwise:expr
+    ) => (
+        async { defer! {info!($($acc)*);} $otherwise.await  }
+    );
+
+
+    (
+        @acc[ $($acc:tt)* ]
+        $f:ident ($($args:tt)*)
+        $(, $($rest:tt)*)?
+    ) => (finally_info! {
+        @acc[
+            $($acc)*
+            $f ($($args)*),
+        ]
+        $($($rest)*)?
+    });
+
+    (
+        @acc[ $($acc:tt)* ]
+        $expr_to_acc:expr
+        $(, $($rest:tt)*)?
+    ) => (finally_info! {
+        @acc[
+            $($acc)*
+            $expr_to_acc,
+        ]
+        $($($rest)*)?
+    });
+
+    ( $($entrypoint:tt)* ) => (finally_info! {
+        @acc[]
+        $($entrypoint)*
+    });
+}
