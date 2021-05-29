@@ -11,11 +11,20 @@ use thiserror::Error;
 
 use shared::dep::serde_cbor as serde_cbor;
 use shared::message::ClientToServerMessage;
-
+use std::num::TryFromIntError;
+use std::time::SystemTimeError;
 
 
 pub type Result<T=()> = std::result::Result<T, Error>;
 
+
+#[derive(Error, Debug)]
+pub enum PingError{
+    #[error("ping value overflow")]
+    GamerLag(#[from] TryFromIntError),
+    #[error("Received PONG from server with future time")]
+    TimeTraveler(#[from] SystemTimeError)
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
