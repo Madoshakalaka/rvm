@@ -15,7 +15,7 @@ name = "extra_log"
 
 [dependencies]
 shared = {path = "../shared"}
-crossterm = "0.19"
+crossterm = {version = "0.19", features = ['event-stream']}
 tui = { version = "0.15", default-features = false, features = ['crossterm'] }
 ansi_term = "0.12"
 tracing = "0.1"
