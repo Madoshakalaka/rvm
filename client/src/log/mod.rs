@@ -8,13 +8,15 @@ use std::fmt::Write;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
-use ansi_term::Style;
+use shared::dep::ansi_term::Style;
+use shared::dep::{tracing, tracing_core};
+
 use tracing::{Event, Id, Metadata};
 use tracing::level_filters::LevelFilter;
 use tracing::span::{Attributes, Record};
 
 
-use tracing_core::span::Current;
+use shared::dep::tracing_core::span::Current;
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::field::RecordFields;
 use tracing_subscriber::fmt::{FormatFields};
@@ -27,16 +29,17 @@ use shared::dep::{serde_cbor, tokio};
 
 
 use crate::error::{Error, Result};
-use crate::log::protocol::MessageToLogProcess;
+
 use crate::log::registry::{LookupSpan, SpanRef, FromRoot};
 use shared::dep::tokio::{sync::mpsc::UnboundedSender};
 use shared::dep::tokio_util::codec::{FramedWrite, LengthDelimitedCodec};
 use shared::dep::futures::SinkExt;
-use crate::log::writer::{AsyncExtraTerminalWriter};
 
 
-mod writer;
-pub mod protocol;
+use shared::message::client_logging::MessageToLogProcess;
+use shared::dep::tokio::net::TcpStream;
+
+
 mod registry;
 
 
@@ -280,7 +283,7 @@ impl<'a, N> fmt::Display for FullCtx<'a, N>
 
 impl HolySpirit
 {
-    fn format_event<FF: for<'a> FormatFields<'a> + 'static>(&self, ctx: &FmtContext<'_, FF>, writer: &mut dyn Write, event: &Event<'_>) -> Result<protocol::Level>
+    fn format_event<FF: for<'a> FormatFields<'a> + 'static>(&self, ctx: &FmtContext<'_, FF>, writer: &mut dyn Write, event: &Event<'_>) -> Result<shared::message::client_logging::Level>
     {
         let normalized_meta = event.normalized_metadata();
         let meta = normalized_meta.as_ref().unwrap_or_else(|| event.metadata());
@@ -311,7 +314,7 @@ impl HolySpirit
         ctx.format_fields(writer, event).map_err(|e| Error::FormatFields(e))?;
         writeln!(writer).unwrap();
 
-        Ok(protocol::Level::from(*meta.level()))
+        Ok(shared::message::client_logging::Level::from(*meta.level()))
     }
 }
 
@@ -531,7 +534,7 @@ impl<'a, S> Context<'a, S>
     pub fn current_span(&self) -> tracing_core::span::Current {
         self.subscriber
             .map(tracing_core::Subscriber::current_span)
-            // the comment is from tracing_subcriber
+            // the comment is from tracing_subscriber
             // T-O-D-O: this would be more correct as "unknown", so perhaps
             // `tracing-core` should make `Current::unknown()` public?
             .unwrap_or_else(tracing_core::span::Current::none)
@@ -741,24 +744,28 @@ impl<'a, L: LookupSpan<'a>> std::fmt::Debug for Scope<'a, L> {
 }
 
 
-pub async fn start_logging(main_end_rx: tokio::sync::oneshot::Receiver<()>) {
+pub async fn start_logging(main_end_rx: tokio::sync::oneshot::Receiver<()>) -> Result {
     let (tx,
         mut rx) = tokio::sync::mpsc::unbounded_channel::<MessageToLogProcess>();
     let subscriber = Chad::new(tx);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    let stream = TcpStream::connect("127.0.0.1:8081").await
+        .map_err(|e| Error::LogConnection(e))?;
 
     tokio::select! {
         _ = main_end_rx => {}
         _ = async move {
         let mut framed_write
-            = FramedWrite::new(AsyncExtraTerminalWriter::default(),
+            = FramedWrite::new(stream,
                                LengthDelimitedCodec::new());
             while let Some(x) = rx.recv().await {
                 framed_write.send(serde_cbor::to_vec(&x).unwrap().into()).await.unwrap();
             };
         } => {}
     }
+
+    Ok(())
 }
 
 #[macro_export]

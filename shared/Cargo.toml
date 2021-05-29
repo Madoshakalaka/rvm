@@ -10,16 +10,18 @@ edition = "2018"
 
 strum = { version = "0.20", features = ["derive"] }
 tokio-util = { version = "0.6", features = ["full"] }
-tokio = { version = "1.5.0", features = ["full"] }
 
+tokio = { version = "1.5.0", features = ["full"] }
+tracing = "0.1"
 futures = "0.3"
 futures-core = "0.3"
 bytes = "1.0"
-
-
+tracing-core = "0.1"
+crossterm = { version = "0.19", features = ['event-stream'] }
 futures-util = "0.3"
 
 thiserror = "1.0"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = "0.11"
+ansi_term = "0.12"

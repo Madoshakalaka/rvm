@@ -4,30 +4,22 @@ version = "0.1.0"
 authors = ["matt <syan4@ualberta.ca>"]
 edition = "2018"
 
-default-run = "client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 
-[[bin]]
-name = "extra_log"
-
-
 [dependencies]
-shared = {path = "../shared"}
-crossterm = {version = "0.19", features = ['event-stream']}
+shared = { path = "../shared" }
+
 tui = { version = "0.15", default-features = false, features = ['crossterm'] }
-ansi_term = "0.12"
-tracing = "0.1"
 tracing-subscriber = "0.2.18"
 tracing-futures = "0.2"
-winapi = {version = "0.3", features = ['processthreadsapi', 'wincon', 'winnls']}
-tracing-core = "0.1"
-tracing-log= "0.1"
+winapi = { version = "0.3", features = ['processthreadsapi', 'wincon', 'winnls'] }
+tracing-log = "0.1"
 thread_local = "1.1"
 sharded-slab = "0.1"
 smallvec = "1.6"
 # serde can not be easily re-exported. Need to have it here too.
 # https://github.com/serde-rs/serde/issues/1465
-serde = {version = "1.0", features=["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 scopeguard = "1.0"

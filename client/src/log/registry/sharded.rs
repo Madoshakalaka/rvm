@@ -12,7 +12,7 @@ use std::{
     cell::{Cell, RefCell},
     sync::{atomic::{fence, AtomicUsize, Ordering}, RwLock},
 };
-use tracing_core::{
+use shared::dep::tracing_core::{self,
     dispatcher::{self, Dispatch},
     span::{self, Current, Id},
     Event, Interest, Metadata, Subscriber,

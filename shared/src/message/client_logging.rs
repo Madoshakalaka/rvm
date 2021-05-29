@@ -39,18 +39,17 @@ pub enum LevelInner {
     Error = 4,
 }
 
-impl From<tracing_core::Level> for Level{
+impl From<tracing_core::Level> for Level {
     fn from(l: tracing_core::Level) -> Self {
         match l {
-            tracing_core::Level::TRACE => Level{ 0: LevelInner::Trace },
-            tracing_core::Level::DEBUG => Level{ 0: LevelInner::Debug },
-            tracing_core::Level::INFO => Level{ 0: LevelInner::Info },
-            tracing_core::Level::WARN => Level{ 0: LevelInner::Warn },
-            tracing_core::Level::ERROR => Level{ 0: LevelInner::Error },
+            tracing_core::Level::TRACE => Level { 0: LevelInner::Trace },
+            tracing_core::Level::DEBUG => Level { 0: LevelInner::Debug },
+            tracing_core::Level::INFO => Level { 0: LevelInner::Info },
+            tracing_core::Level::WARN => Level { 0: LevelInner::Warn },
+            tracing_core::Level::ERROR => Level { 0: LevelInner::Error },
         }
     }
 }
-
 
 
 #[cfg(test)]
@@ -58,22 +57,19 @@ mod tests {
     use super::*;
 }
 
-
 pub struct EventLevel<'a> {
-    pub level: & 'a tracing_core::Level,
+    pub level: &'a tracing_core::Level,
 }
-
-
 
 
 impl<'a> fmt::Display for EventLevel<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self.level {
-            tracing_core::Level::TRACE => write!(f,"{}", TRACE_STR),
-            tracing_core::Level::DEBUG => write!(f,"{}", DEBUG_STR),
-            tracing_core::Level::INFO => write!(f,"{}", INFO_STR),
-            tracing_core::Level::WARN => write!(f,"{}", WARN_STR),
-            tracing_core::Level::ERROR => write!(f, "{}",ERROR_STR),
+            tracing_core::Level::TRACE => write!(f, "{}", TRACE_STR),
+            tracing_core::Level::DEBUG => write!(f, "{}", DEBUG_STR),
+            tracing_core::Level::INFO => write!(f, "{}", INFO_STR),
+            tracing_core::Level::WARN => write!(f, "{}", WARN_STR),
+            tracing_core::Level::ERROR => write!(f, "{}", ERROR_STR),
         }
     }
 }

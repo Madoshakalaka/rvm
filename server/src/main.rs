@@ -2,16 +2,16 @@ use shared::dep::bytes as bytes;
 use bytes::Bytes;
 
 use tokio::net::TcpListener;
-use tokio_stream::{StreamExt};
+
 
 
 use shared::dep::tokio as tokio;
 
 use shared::dep::serde_cbor;
-use shared::message::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, ServerToClientMessage};
+use shared::message::server_client::{CLIENT_QUIT_MESSAGE, ClientToServerMessage, ServerToClientMessage};
 
 use crate::error::Error;
-use shared::dep::futures::{SinkExt, TryFutureExt};
+use shared::dep::futures::{SinkExt, TryFutureExt, StreamExt};
 use error::Result;
 
 
@@ -26,7 +26,7 @@ async fn run() -> Result<()> {
         let (socket, address) = listener.accept().await.map_err(|e| Error::Accept(e))?;
         println!("Accepted connection from {}", address);
         tokio::spawn(async move {
-            let mut framed = shared::message::default_framed(socket);
+            let mut framed = shared::message::server_client::default_framed(socket);
 
 
             while let Some(received_bytes) = framed.next().await {

@@ -3,7 +3,7 @@ use client::log;
 
 
 use std::time::Duration;
-use tracing::info;
+use shared::dep::tracing::info;
 
 
 #[tokio::main]
@@ -17,7 +17,7 @@ async fn main() {
     info!("Main exit");
     tokio::time::sleep(Duration::from_millis(100)).await;
     main_end_tx.send(()).unwrap();
-    logging.await.unwrap();
+    logging.await.unwrap().unwrap();
 
     if run_res.is_err() {
         std::process::exit(-1)

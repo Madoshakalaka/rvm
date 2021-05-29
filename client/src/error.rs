@@ -1,33 +1,29 @@
-
-
-
-
-use shared::dep::tokio as tokio;
-use tracing::error;
-
 use std::fmt::Formatter;
-use shared::dep::thiserror as thiserror;
-use thiserror::Error;
-
-use shared::dep::serde_cbor as serde_cbor;
-use shared::message::ClientToServerMessage;
 use std::num::TryFromIntError;
 use std::time::SystemTimeError;
 
+use thiserror::Error;
 
-pub type Result<T=()> = std::result::Result<T, Error>;
+use shared::dep::serde_cbor as serde_cbor;
+use shared::dep::thiserror as thiserror;
+use shared::{dep::{tokio, crossterm, tracing::error}, message::server_client::ClientToServerMessage};
+
+
+pub type Result<T = ()> = std::result::Result<T, Error>;
 
 
 #[derive(Error, Debug)]
-pub enum PingError{
+pub enum PingError {
     #[error("ping value overflow")]
     GamerLag(#[from] TryFromIntError),
     #[error("Received PONG from server with future time")]
-    TimeTraveler(#[from] SystemTimeError)
+    TimeTraveler(#[from] SystemTimeError),
 }
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Failed to establish connection to champ")]
+    LogConnection(#[source] std::io::Error),
     #[error("Failed to establish connection to server")]
     Connection(#[source] std::io::Error),
     #[error("Failed to shutdown the TCP stream")]
@@ -65,67 +61,43 @@ pub enum Error {
 
 }
 
-pub fn ok()->Result<()>{
+pub fn ok() -> Result<()> {
     Ok(())
 }
 
 /// tokio's JoinError doesn't impl the std::error::Error trait, 属实垃圾
 /// A wrapper here for it to better fit into our supreme error handling system.
 #[derive(Error, Debug)]
-pub struct JoinError{
-    wrapped: tokio::task::JoinError
+pub struct JoinError {
+    wrapped: tokio::task::JoinError,
 }
 
-impl std::fmt::Display for JoinError{
+impl std::fmt::Display for JoinError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.wrapped.is_panic(){
+        if self.wrapped.is_panic() {
             f.write_str("Task panicked")
-        }else if self.wrapped.is_cancelled() {
+        } else if self.wrapped.is_cancelled() {
             f.write_str("Task panicked")
-        } else{
+        } else {
             f.write_str("Task failed to complete")
         }
     }
 }
 
-impl From<tokio::task::JoinError> for JoinError{
-
+impl From<tokio::task::JoinError> for JoinError {
     fn from(wrapped: tokio::task::JoinError) -> Self {
-        Self{wrapped}
+        Self { wrapped }
     }
 }
 
-pub type SpawnedTaskResult<T=Result> = std::result::Result<T, tokio::task::JoinError>;
+pub type SpawnedTaskResult<T = Result> = std::result::Result<T, tokio::task::JoinError>;
 
 
-
-pub(crate) fn from_spawned_task_result<T>(task_result: SpawnedTaskResult<Result<T>>) -> Result<T>{
+pub fn from_spawned_task_result<T>(task_result: SpawnedTaskResult<Result<T>>) -> Result<T> {
     match task_result {
         Ok(r) => {
             r
         }
         Err(e) => Err(Error::MainTaskJoin(e.into()))
     }
-}
-
-
-
-fn _report_error_chain(e: impl std::error::Error, is_source:bool){
-    if let Some(source) = e.source(){
-        _report_error_chain(source, true);
-    }
-    match is_source{
-        true => {
-            error!("{}\tThis is the cause of the next error.", e);
-        }
-        false => {
-            error!("{}", e);
-        }
-    }
-
-}
-
-
-pub fn report_error_chain(e: impl std::error::Error){
-    _report_error_chain(e, false);
 }

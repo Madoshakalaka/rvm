@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use bytes::Bytes;
-use crossterm::event::{Event, KeyCode, KeyEvent, EventStream};
+
 use future::sink::SinkExt;
 
 use tokio::net::TcpStream;
@@ -25,18 +25,15 @@ use shared::dep::futures::StreamExt;
 
 use shared::dep::serde_cbor as serde_cbor;
 
-use shared::dep::tokio;
+use shared::dep::{tokio, tracing, crossterm::event::{Event, KeyCode, KeyEvent, EventStream}};
 use shared::dep::tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use shared::dep::tokio::sync::broadcast::Receiver;
 
 
 use shared::dep::tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-use shared::message::{ClientToServerMessage, ServerToClientMessage};
+use shared::message::server_client::{ClientToServerMessage, ServerToClientMessage};
 use tracing::{debug, info};
 use shared::dep::tokio::task::JoinHandle;
-
-
-
 
 
 use std::io::Stdout;
@@ -57,25 +54,23 @@ mod tests {
 
 
 async fn forever_listen_for_controls(message_tx_from_events: tokio::sync::broadcast::Sender<ClientToServerMessage>)
-    -> Result<()> {
+                                     -> Result<()> {
     let mut reader = EventStream::new();
 
-    while let Some(Ok(e))  = reader.next().await{
-        if let Some(m) = from(e){
+    while let Some(Ok(e)) = reader.next().await {
+        if let Some(m) = from(e) {
             debug!("Sending message {:?} to server", m);
             message_tx_from_events.send(m).unwrap();
         }
-
     }
     Ok(())
 }
 
 async fn draw_frame_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-                         mut calculated_ping_rx: tokio::sync::mpsc::Receiver<std::result::Result<u16, PingError>>) -> Result{
+                         mut calculated_ping_rx: tokio::sync::mpsc::Receiver<std::result::Result<u16, PingError>>) -> Result {
+    let lower_screen_message_queue: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::with_capacity(30)));
 
-    let lower_screen_message_queue:Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::with_capacity(30)));
-
-    let mut frame_duration = tokio::time::interval(Duration::from_secs_f32(1f32/60f32));
+    let mut frame_duration = tokio::time::interval(Duration::from_secs_f32(1f32 / 60f32));
     let mut frame_count: u8 = 0;
     let mut frame_count_check_point = SystemTime::now();
 
@@ -84,8 +79,8 @@ async fn draw_frame_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 
     let message_queue_pusher = Arc::clone(&lower_screen_message_queue);
     let ping_recv = async move {
-        loop{
-            if let Some(Ok(x)) =  calculated_ping_rx.recv().await{
+        loop {
+            if let Some(Ok(x)) = calculated_ping_rx.recv().await {
                 message_queue_pusher.lock().unwrap().push_front(format!("ping: {}", x));
             }
         }
@@ -109,7 +104,7 @@ async fn draw_frame_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>,
                     frame_count_check_point = now;
                 }
 
-                if let Some(message) = lower_screen_message_queue.pop_back(){
+                if let Some(message) = lower_screen_message_queue.pop_back() {
                     lower_screen_buffer.clear();
                     lower_screen_buffer.push_str(&*message);
                 }
@@ -154,7 +149,6 @@ async fn draw_frame_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>,
             r
         }
     )
-
 }
 
 
@@ -207,7 +201,7 @@ pub async fn run() -> Result {
         );
     });
 
-    let draw = draw_frame_loop( &mut terminal, calculated_ping_rx);
+    let draw = draw_frame_loop(&mut terminal, calculated_ping_rx);
 
     return tokio::select!(
         r = finally_info!("Server interaction tasks ended.", interact_with_server) =>{
@@ -242,7 +236,7 @@ async fn calculate_ping_periodically(framed_write: &Arc<TMutex<FramedWrite<Owned
         if let Some(time) = pong_rx.recv().await {
             let message: std::result::Result<u16, PingError>;
 
-            match SystemTime::now().sub(Duration::from_secs(1)).duration_since(time){
+            match SystemTime::now().sub(Duration::from_secs(1)).duration_since(time) {
                 Ok(diff) => {
                     message = u16::try_from(diff.as_millis()).map_err(|e| e.into());
                 }

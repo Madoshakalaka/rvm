@@ -47,9 +47,3 @@ pub enum ServerToClientMessage {
 pub fn default_framed(stream: TcpStream) -> Framed<TcpStream, LengthDelimitedCodec> {
     Framed::new(stream, LengthDelimitedCodec::new())
 }
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}

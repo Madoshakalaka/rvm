@@ -66,7 +66,7 @@ pub mod extensions;
 pub mod sharded;
 pub mod stack;
 
-use tracing_core::{field::FieldSet, span::Id, Metadata};
+use shared::dep::tracing_core::{field::FieldSet, span::Id, Metadata};
 use crate::log::registry::extensions::{Extensions, ExtensionsMut};
 
 /// A module containing a type map of span extensions.

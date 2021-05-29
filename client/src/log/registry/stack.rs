@@ -1,4 +1,4 @@
-pub(crate) use tracing_core::span::Id;
+pub(crate) use shared::dep::tracing_core::span::Id;
 
 #[derive(Debug)]
 struct ContextId {
