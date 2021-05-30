@@ -165,10 +165,9 @@ impl HolySpirit {
     #[inline]
     fn format_timestamp(&self, writer: &mut dyn fmt::Write) -> fmt::Result
     {
-        let style = Style::new().dimmed();
-        write!(writer, "{}", style.prefix())?;
+
         tracing_subscriber::fmt::time::SystemTime.format_time(writer)?;
-        write!(writer, "{} ", style.suffix())?;
+        write!(writer, " ")?;
         return Ok(());
     }
 }
