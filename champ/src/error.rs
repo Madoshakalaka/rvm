@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use shared::dep::serde_cbor;
 
-pub type Result<T=()> = std::result::Result<T, Error>;
+pub type Result<T = ()> = std::result::Result<T, Error>;
 
 
 #[derive(Error, Debug)]
@@ -15,9 +15,16 @@ pub enum Error {
     #[error("Failed to bind and start server")]
     Bind(#[source] std::io::Error),
     #[error("Failed to accept a connection")]
-    Accept(#[source] std::io::Error)
+    Accept(#[source] std::io::Error),
+    #[error("Terminal initialization failed")]
+    TerminalInitialization(#[source] std::io::Error),
+    #[error("Failed to clear the terminal")]
+    ClearTerminal(#[source] std::io::Error),
+    #[error("Failed to draw frame")]
+    DrawFrame(#[source] std::io::Error),
 }
 
-pub fn ok()->Result{
+
+pub fn ok() -> Result {
     Ok(())
 }
