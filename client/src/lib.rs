@@ -12,10 +12,7 @@ use future::sink::SinkExt;
 use tokio::net::TcpStream;
 use tokio::time::Duration;
 use tokio::sync::Mutex as TMutex;
-use tui::backend::CrosstermBackend;
-use tui::layout::{Constraint, Direction, Layout};
-use tui::Terminal;
-use tui::widgets::{Block, Borders, Paragraph};
+
 
 use error::{Error, Result};
 use shared::dep::bytes as bytes;
@@ -25,7 +22,11 @@ use shared::dep::futures::StreamExt;
 
 use shared::dep::serde_cbor as serde_cbor;
 
-use shared::dep::{tokio, tracing, crossterm::event::{Event, KeyCode, KeyEvent, EventStream}};
+use shared::dep::{tokio, tracing, crossterm::event::{Event, KeyCode, KeyEvent, EventStream},
+                  tui::{Terminal, backend::CrosstermBackend,
+                        layout::{Constraint, Direction, Layout},
+                        widgets::{Block, Borders, Paragraph}},
+};
 use shared::dep::tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use shared::dep::tokio::sync::broadcast::Receiver;
 
@@ -195,7 +196,7 @@ pub async fn run() -> Result {
             r = finally_info!("Ping calculating loop ended.", calculate_ping_periodically(& framed_write1, & mut pong_rx, & calculated_ping_tx)) =>{
                 return r
             }
-            r = finally_info!("Server message listening loop ended.", receive_from_server_until_closed(& mut framed_read, pong_tx)) =>{
+            r = finally_info!("Server message listening loop ended.", receive_from_server_until_closed(& mut framed_read, & pong_tx)) =>{
                 return r
             }
         );
@@ -215,14 +216,11 @@ pub async fn run() -> Result {
         }
     ).and_then(|_| {
         info!("Run exits normally");
-        (&mut terminal).clear().unwrap();
         Ok(())
     });
 }
 
 // todo: move ping display to the top
-// todo: use tcp between log windows and main
-// todo: properly exit
 
 
 async fn calculate_ping_periodically(framed_write: &Arc<TMutex<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>>>,
@@ -277,7 +275,7 @@ async fn send_message(framed_write: &Arc<TMutex<FramedWrite<OwnedWriteHalf, Leng
 }
 
 async fn receive_from_server_until_closed(framed_read: &mut FramedRead<OwnedReadHalf, LengthDelimitedCodec>,
-                                          pong_tx: tokio::sync::mpsc::Sender<SystemTime>, ) -> Result<()> {
+                                          pong_tx: &tokio::sync::mpsc::Sender<SystemTime>, ) -> Result<()> {
     while let Some(received_bytes) = framed_read.next().await {
         let received_bytes = received_bytes.map_err(|e| Error::DecodeFromServer(e))?;
         let received = serde_cbor::from_slice::<ServerToClientMessage>(&*received_bytes)?;
