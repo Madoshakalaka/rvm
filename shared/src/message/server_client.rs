@@ -12,7 +12,7 @@ pub const CLIENT_QUIT_MESSAGE: ClientToServerMessage = ClientToServerMessage::IW
 
 
 /// ```
-/// use shared::message::ClientToServerMessage;
+/// use shared::message::server_client::ClientToServerMessage;
 ///
 /// let encoded_variant = serde_cbor::to_vec(& ClientToServerMessage::IWantToDisconnect).unwrap();
 ///
