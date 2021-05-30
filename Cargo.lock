@@ -102,7 +102,6 @@ dependencies = [
  "tracing-futures",
  "tracing-log",
  "tracing-subscriber",
- "tui",
  "winapi",
 ]
 
@@ -607,6 +606,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-core",
+ "tui",
 ]
 
 [[package]]
